@@ -1,0 +1,172 @@
+import pandas as pd
+import re
+import json
+
+
+
+def load_data(file_path, **args):
+    """
+    Load data from a JSON file.
+    
+    Args:
+        file_path (str or Path): Path to the JSON file.
+        
+    Returns:
+        pd.DataFrame: DataFrame containing the data.
+    """
+    try:
+        return pd.read_json(file_path,**args)
+    except Exception as e:
+        print(f"Error loading data: {e}")
+        return None
+
+    
+def prepare_dataset(df):
+    
+        
+    qa_last_messages = df["raw"].apply(lambda x: get_last_valid_turn(x["messages"])).apply(pd.Series)
+    
+    df = pd.concat([df[["verdict","challenge","proposed_answer"]], qa_last_messages],axis=1)
+    # cuando el verdict es passed, la gente no introduce una proposed_answer, pero es adecuado tener la misma que la que ha hecho el modelo
+    # bien para el llm como juez
+    
+    df['proposed_answer'] = df['proposed_answer'].fillna(df['answer'])
+    
+    # mapeamos a 0 o 1
+    df['verdict'] = df['verdict'].str.lower().str.strip().map({'passed': 1, 'failed': 0}).fillna("").astype(str)
+    
+    return df
+
+def save_data(data, file_path):
+    """
+    Save data to a JSON file.
+    
+    Args:
+        data (list or pd.DataFrame): Data to save.
+        file_path (str or Path): Path to save the file.
+    """
+    try:
+        if isinstance(data, pd.DataFrame):
+            data = data.to_dict(orient='records')
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4)
+        print(f"Data saved to {file_path}")
+    except Exception as e:
+        print(f"Error saving data: {e}")
+
+
+    
+
+def get_last_valid_turn(messages):
+    """
+    Extrae el último intercambio válido entre el usuario y el asistente de una lista de mensajes.
+    
+    Busca de atrás hacia adelante el último par donde el rol sea 'assistant' precedido por 'user'.
+    Valida que ambos mensajes tengan contenido real y extrae el historial previo para contexto.
+
+    Args:
+        messages (list): Lista de diccionarios con claves 'role' y 'content'.
+
+    Returns:
+        dict: Diccionario con 'question', 'answer' y 'history', o None si no se encuentra un par válido.
+    """
+    if not isinstance(messages, list) or len(messages) < 2:
+        return None
+
+    for i in range(len(messages) - 1, 0, -1):
+        assistant_msg = messages[i]
+        user_msg = messages[i-1]
+        
+        # Validación de roles y contenido no vacío
+        if (assistant_msg.get("role") == "assistant" and 
+            user_msg.get("role") == "user" and
+            assistant_msg.get("content", "").strip() and 
+            user_msg.get("content", "").strip()):
+            
+            return {
+                "question": user_msg["content"].strip(),
+                "answer": assistant_msg["content"].strip(),
+                "history": messages[:i-1]
+            }
+    return None
+
+def format_instruction(sample,system_prompt,absolute_prompt, add_message_history=False, output_col = "user_content"):
+    """
+    Construye el prompt estructurado para el modelo Prometheus (LLM-as-a-Judge).
+    
+    Combina el historial de conversación, la respuesta propuesta, la respuesta de referencia 
+    y la rúbrica de evaluación en una plantilla única.
+
+    Args:
+        sample (dict): Un ejemplo del dataset que contiene 'question', 'proposed_answer', 
+                       'answer', 'verdict' y opcionalmente 'history'.
+
+    Returns:
+        dict: Diccionario con la clave 'user_content' lista para ser procesada por el tokenizer.
+    """
+    category_name = sample.get('category_name') or ''
+    challenge = sample.get('challenge') or ''
+    question = sample.get('question') or ''
+    proposed_answer = sample.get('proposed_answer') or ''
+    answer = sample.get('answer') or ''
+    history = sample.get('history') or []
+    #verdict = sample.get('verdict') or None
+
+    # Reconstrucción del historial para dar contexto al Juez (opcional)
+    context = ""
+    if add_message_history:
+        context = "\n".join([f"{m['role'].capitalize()}: {m['content']}" for m in history])
+        context += f"\nUser: {question}"
+    else:
+        context = question
+
+    # Inyección en la plantilla de evaluación absoluta
+    user_content = system_prompt + "\n\n" + absolute_prompt.format(
+        category_name=category_name,
+        challenge=challenge,
+        question= context,
+        answer=answer,
+        proposed_answer= proposed_answer
+    )
+    
+    return {output_col: user_content}
+
+
+def prepare_sft_binary_text(sample, tokenizer_eos_token='</s>', output_col_name="prompt_sft", input_col_name="user_content", reasoning_col_name="val_goal_reasoning"):
+    """
+    Prepara una muestra de datos para el Supervised Fine-Tuning (SFT) de Prometheus.
+    """
+    prompt = sample.get(input_col_name, "").strip()
+    raw_verdict = sample.get("verdict")
+    
+    # Extraemos el razonamiento. Si por alguna razón está vacío, ponemos un texto genérico de respaldo
+    # para no romper el formato de entrenamiento.
+    reasoning = sample.get(reasoning_col_name)
+    if not reasoning:
+        reasoning = "The response is evaluated based on the provided rubric."
+    else:
+        reasoning = reasoning.strip()
+    
+    # 1. Normalizar el veredicto
+    if isinstance(raw_verdict, str):
+        raw_verdict = raw_verdict.strip().lower()
+
+    # 2. Mapeo estricto a binario
+    mapping = {
+        1: "1", 0: "0", 
+        "1": "1", "0": "0",
+        "passed": "1", "failed": "0" 
+    }
+    
+    label = mapping.get(raw_verdict)
+    
+    # 3. Manejo seguro de nulos ANTES de concatenar
+    # Si label es None, devolveríamos "[RESULT] None", lo cual contaminaría el entrenamiento.
+    if label is None:
+        return {output_col_name: ""} 
+    
+    # 4. El formato PERFECTO para Prometheus
+    full_text = f"{prompt}{reasoning} [RESULT] {label}{tokenizer_eos_token}"
+    
+    return {output_col_name: full_text}
