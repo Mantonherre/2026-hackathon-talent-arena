@@ -157,7 +157,7 @@ def get_last_valid_turn(messages):
             }
     return None
 
-def format_instruction(sample,system_prompt,absolute_prompt, add_message_history=False, output_col = "user_content"):
+def format_instruction(sample,system_prompt, absolute_prompt, add_message_history=False, output_col = "user_content"):
     """
     Construye el prompt estructurado para el modelo Prometheus (LLM-as-a-Judge).
     

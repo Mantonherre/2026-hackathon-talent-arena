@@ -50,7 +50,7 @@ def get_model_and_tokenizer(model_name="prometheus-eval/prometheus-7b-v2.0" ):
 
 
     
-def split_model_reason_result(sample):
+def split_model_reason_result(sample, output_suffix = "model"):
     """
     Post-procesa la salida del modelo para separar la explicación de la puntuación.
     
@@ -79,8 +79,8 @@ def split_model_reason_result(sample):
         result = None
     
     return {
-        "reason": reason,
-        "model_pred": result
+        f"{output_suffix}_reason": reason,
+        f"{output_suffix}_pred": result
     }
 
 
@@ -124,7 +124,8 @@ def model_predict(model, tokenizer, prompt, max_new_tokens =200, temperature=0.7
 
 
 
-def model_predict_batched(model, tokenizer, batch, input_col = "user_content", temperature = 0.1, max_new_tokens = 1000):
+def model_predict_batched(model, tokenizer, batch, input_col = "user_content", 
+                            temperature = 0.1, max_new_tokens = 1000, output_suffix = "model"):
     # 1. Detectamos el dispositivo de entrada (donde está la primera capa)
     model_device = model.device 
     
@@ -156,7 +157,7 @@ def model_predict_batched(model, tokenizer, batch, input_col = "user_content", t
         skip_special_tokens=True
     )
     
-    return {"model_output": decoded_outputs}
+    return {f"{output_suffix}_output": decoded_outputs}
 
 
 

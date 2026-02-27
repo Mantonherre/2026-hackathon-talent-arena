@@ -13,43 +13,66 @@ Este proyecto contiene scripts y notebooks para explorar y realizar fine-tuning 
     - `03_robustness.ipynb`: Script para evaluar la robustez de tu modelo frente a diferentes variaciones en los prompts introducidos por el usuario.
 - `output/`: Directorio para guardar modelos entrenados y resultados.
 
-## Configuración
+## Instrucciones de Instalación (AWS SageMaker)
 
-1.  **Entorno Virtual**:
-    Asegúrate de tener Python instalado. Crea y activa un entorno virtual:
-    ```bash
-    python -m venv .venv
-    # Windows
-    .\.venv\Scripts\activate
-    # Linux/Mac
-    source .venv/bin/activate
-    ```
+1. Abre una terminal en SageMaker.
+2. Crea una carpeta llamada `hackathon` y entra en ella:
+   ```bash
+   mkdir hackathon && cd hackathon
+   ```
+3. Clona el repositorio del reto:
+   ```bash
+   git clone https://github.com/desafio-ALIA/2026-hackathon-talent-arena
+   ```
+4. Mueve la carpeta a tu directorio de SageMaker y entra:
+   ```bash
+   cd .. && mv hackathon/2026-hackathon-talent-arena /home/ec2-user/SageMaker/
+   cd /home/ec2-user/SageMaker/2026-hackathon-talent-arena
+   ```
+5. Haz una copia del archivo `.env-example` a `.env`:
+   ```bash
+   cp .env-example .env
+   ```
+6. Introduce en `.env` tu clave de Hugging Face (opcional).
+7. Crea el entorno de conda con las dependencias necesarias:
+   ```bash
+   conda env create -f conda.yaml
+   ```
+8. Activa el entorno virtual:
+   ```bash
+   conda activate sft_hackathon_env
+   ```
+9. Instala el kernel para poder seleccionarlo en los Jupyter Notebooks:
+   ```bash
+   python -m ipykernel install --user --name sft_hackathon_alia_env --display-name "Python 3.11 (Hackathon ALIA)"
+   ```
+10. ¡Importante! Al usar los notebooks, selecciona siempre el kernel **"Python 3.11 (Hackathon ALIA)"**.
 
-2.  **Instalar Dependencias**:
-    ```bash
-    pip install -r requirements.txt
-    ```
+## Desarrollo del Reto
 
-3.  **Variables de Entorno (IMPORTANTE)**:
-    Para descargar el modelo y usarlo, necesitas una cuenta de [Hugging Face](https://huggingface.co/) y generar un token de acceso (HF Token).
-    - Crea una cuenta gratis si no la tienes.
-    - Ve a tus Preferencias / Settings -> Access Tokens.
-    - Crea un nuevo token (Read/Write) y cópialo.
-    - Copia el archivo `.env-example` a `.env` y añade tu token de Hugging Face:
-    ```bash
-    copy .env-example .env
-    ```
-    Edita `.env` con tu `HF_TOKEN`.
+Para maximizar tus resultados durante el hackathon, el reto consta de las siguientes fases:
 
-## Pasos para el Hackathon
+1. **Preparación de Datos**: Sube los datos que se te van a compartir a la carpeta `data/`. Pon el nombre del fichero de datos proporcionado en tu archivo `.env`. *(Se ha dejado un sample inicialmente para que puedas probar)*
+2. **Exploración de Datos**: Inspecciona y entiende los datos en `notebooks/01_eda.ipynb`.
+3. **Fine-Tuning del Modelo**: Entrena y ajusta el modelo en `notebooks/02_finetuning.ipynb`. (Nota que al final del notebook hay sugerencias para iterar y mejorar el modelo).
+4. **Evaluación de la Robustez**: Evalúa la robustez del modelo ajustado en `notebooks/03_robustness.ipynb`. 
 
-Para maximizar tus resultados durante el hackathon, te recomendamos seguir este flujo:
+### Terminado el reto: Evaluación y Entrega
 
-1.  **Exploración de Datos**: Abre `notebooks/01_eda.ipynb` para entender los datos con los que estás trabajando (revisa `docs/dataset.md`).
-2.  **Fine-Tuning y Evaluación Base**: Abre `notebooks/02_finetuning.ipynb`. Aquí podrás correr el modelo base, ver si aprueba en sus evaluaciones y luego afinar el modelo con LoRA para ajustar sus criterios a la rúbrica de Safety que se pide.
-3.  **Evaluación de Robustez**: Abre `notebooks/03_robustness.ipynb`. Corrompe los prompts introducidos (simulando errores de usuario o gramaticales) para evaluar si tu modelo fino (Fine-Tuned) sigue siendo igual de preciso a la hora de juzgar interacciones.
+Una vez concluido el desarrollo:
+
+- Se os pasará un **dataset de test**, del cual deberéis devolver las predicciones del modelo en formato JSON. 
+- El JSON de test que se os proporciona tiene las etiquetas `"id"` y `"user_prompt"` por observación. 
+- Debéis completarlo entregando un JSON que contenga, además, las siguientes claves por cada observación:
+  - `"model_pred"`
+  - `"model_reason"`
+  - `"model_pred_typos"`
+  - `"model_reason_typos"`
+- **Criterios de Evaluación**:
+  - Se evaluará principalmente el **accuracy** entre el valor real y el valor predicho por el modelo (clasificando si es un texto OK o no de entrada).
+  - Se valorará positivamente si `"model_pred"` y `"model_pred_typos"` coinciden, lo cual indicaría que el modelo fine-tuneado es más robusto ante errores.
+- Finalmente, **ese fichero resultante se nos compartirá** y nosotros evaluaremos los resultados comparando con las etiquetas reales de cada observación.
 
 ## Notas
 
-- El modelo por defecto es `prometheus-eval/prometheus-7b-v2.0` (o similar).
-- El script de carga del modelo en `src/model_utils.py` tiene la descarga comentada para evitar descargas masivas accidentales durante la configuración. Descoméntalo cuando estés listo.
+- El modelo por defecto es `prometheus-eval/prometheus-7b-v2.0`.
