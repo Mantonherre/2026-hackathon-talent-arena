@@ -14,14 +14,28 @@ El dataset se entrega en formato JSON y contiene los siguientes campos principal
 - `verdict`: Evaluación previa de la respuesta del modelo (`passed` o `failed`).
   - **passed**: El modelo superó el reto de forma segura.
   - **failed**: El modelo cayó en la trampa (jailbreak) o generó una respuesta insegura.
-- `proposed_answer`: Una respuesta sugerida o de referencia. Si el veredicto es `passed`, este campo puede estar vacío, ya que la respuesta generada por el modelo es válida. Si es `failed`, suele contener la respuesta ideal (segura).
-- `validation`: Metadatos sobre la validación del contexto.
-- `raw`: Un diccionario anidado que contiene toda la conversación en bruto. Destaca especialmente el campo `messages`, que es una lista de diccionarios representando los turnos de la conversación entre el `user` y el `assistant`.
+- `conversation`: Texto completo que contiene todo el historial de interacción. 
+- `question`: El último mensaje válido escrito por el usuario en base a `conversation` a efectos de ser evaluado o rebatido.
+- `last_interaction`: La respuesta generada por el agente de IA al cual estamos poniendo a prueba como Jueces, sacado de la `conversation`.
+- `corrected_response_validated`: Respuesta ideal o segura certificada manualmente (Ground Truth). Este campo actúa como la sugerencia de respuesta correcta.
 
 ## Preparación para Evaluación (Prometheus)
 
-Para las tareas del hackathon (como el uso de Prometheus LLM-as-a-Judge o el Fine-Tuning), el pipeline provisto extraerá:
-1. El último turno de intercambio válido entre el usuario y el asistente de la lista `messages`.
-2. Convertirá el `verdict` original (`passed`/`failed`) a formato binario (`1`/`0`).
+Para las tareas del hackathon (como el uso de Prometheus LLM-as-a-Judge o el Fine-Tuning), el pipeline provisto mapea automáticamente los campos hacia el modelo formateador:
+1. Convierte el `verdict` original (`passed`/`failed`) a un target binario adecuado para modelaje (`1`/`0`).
+2. Mapea la variable `{question}` en el prompt hacia el texto real en la columna `question`.
+3. Mapea `{answer}` hacia la columna `last_interaction`. 
+4. Mapea `{proposed_answer}` a `corrected_response_validated`.
 
-¡Asegúrate de explorar el notebook `01_eda.ipynb` para ver datos reales en acción!
+Recuerda que estas aserciones de variables y el comportamiento de Prometheus puedes inspeccionarlos en vivo desde los notebooks proporcionados como `01_eda.ipynb`.
+
+## Formato de Entrega del Hackathon (Submission)
+
+En el último cuaderno, `04_submission.ipynb`, la herramienta generará de forma automática el `submission.json` a partir del CSV de evaluación (test) ciego que se proporcione. El output final de cada fila tendrá obligatoriamente la siguiente información:
+
+- `"id"`: ID del caso a evaluar.
+- `"user_prompt"`: El prompt del usuario usado (extraído de test).
+- `"model_pred"`: La clase binaria (`1` passed o `0` failed) que ha decretado tu modelo juez ante la interacción analizada.
+- `"model_reason"`: El texto o feedback que generó tu modelo para avalar la decisión anterior.
+- `"model_pred_typos"`: La clase binaria frente al test superando variaciones de ruido.
+- `"model_reason_typos"`: La razón del modelo frente al test variando el ruido.

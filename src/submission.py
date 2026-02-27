@@ -243,14 +243,13 @@ class ValidateSubmission:
     y calcular sus métricas de desempeño frente a un dataset de validación real.
     """
     
-    def __init__(self, submission_file: str, validation_file: str, expected_nrows: int = 100):
+    def __init__(self, submission_file: str, validation_file: str):
         """
         Inicializa el validador cargando los dataframes.
 
         Args:
             submission_file (str): Ruta al archivo JSON de submission generado.
             validation_file (str): Ruta al archivo JSON con el ground truth (verdict).
-            expected_nrows (int): Número de filas exactas esperadas para dar la submission como válida.
         """
         # Utilizamos try-except por si los ficheros vienen en formatos/orientaciones distintas (orient="records", etc.)
         try:
@@ -260,16 +259,33 @@ class ValidateSubmission:
             print(f"Error al leer los archivos de validación. Revisa el formato JSON: {e}")
             raise
 
-        self.expected_nrows = expected_nrows
         self.submission_columns = [
             "id", "team", "po_m_pred", "po_m_reason", 
             "pt_m_pred", "pt_m_reason", "pg_m_pred", "pg_m_reason"
         ]
 
     def check_submission_size(self):
-        """Verifica que el número de filas coincida con lo esperado por las bases del hackathon."""
-        size = self.df_submission.shape[0]
-        assert size == self.expected_nrows, f"Error: La submission tiene {size} filas en vez de {self.expected_nrows} iteraciones requeridas."
+        """Verifica que el número de filas coincida con lo esperado."""
+        # Comprobar número de filas
+        size_sub = self.df_submission.shape[0]
+        size_val = self.df_validation.shape[0]
+        assert size_sub == size_val, f"Error: La submission tiene {size_sub} filas vs las {size_val} del dataset original."
+
+    def check_submission_ids(self):
+        """Verifica que los IDs sean idénticos entre la submission y el dataset original."""
+        # Comprobar si los IDs cuadran si existe la columna de ID (asumimos 'id' o 'record_id')
+        id_col = 'id' if 'id' in self.df_validation.columns else 'record_id' if 'record_id' in self.df_validation.columns else None
+        
+        if id_col and id_col in self.df_submission.columns:
+            # Ordenamos ambos para comprobar que sean exactamente los mismos
+            ids_val = set(self.df_validation[id_col].astype(str))
+            ids_sub = set(self.df_submission[id_col].astype(str))
+            
+            faltan = ids_val - ids_sub
+            sobran = ids_sub - ids_val
+            
+            assert not faltan and not sobran, f"Error: Los IDs no coinciden. Faltan: {faltan}, Sobran: {sobran}"
+
     
     def check_submission_columns(self):
         """Asegura que todas las columnas demandadas estén presentes en el payload enviado."""
@@ -333,6 +349,7 @@ class ValidateSubmission:
     def check_all(self):
         """Corre todas las validaciones de sanidad de la data del participante."""
         self.check_submission_size()
+        self.check_submission_ids()
         self.check_submission_columns()
     
     def main(self) -> tuple:
@@ -352,16 +369,14 @@ class ValidateSubmissions:
     Gestor por lotes de archivos de submission generados, encargado de procesar
     multiples entregas utilizando la clase 'ValidateSubmission'.
     """
-    def __init__(self, submission_files: list, validation_file: str, expected_nrows: int = 100):
+    def __init__(self, submission_files: list, validation_file: str ):
         """
         Args:
             submission_files (list[str]): Rutas a los diferentes JSON a cualificar.
             validation_file (str): Ruta al data frame verificado.
-            expected_nrows (int): Limitador esperado.
         """
         self.submission_files = submission_files
         self.validation_file = validation_file
-        self.expected_nrows = expected_nrows
     
     def validate(self) -> list:
         """
@@ -374,7 +389,7 @@ class ValidateSubmissions:
         results = []
         for submission_file in self.submission_files:
             try:
-                validator = ValidateSubmission(submission_file, self.validation_file, self.expected_nrows)
+                validator = ValidateSubmission(submission_file, self.validation_file)
                 validator.check_all()
                 acc, variability = validator.calculate_metrics()
                 results.append({
