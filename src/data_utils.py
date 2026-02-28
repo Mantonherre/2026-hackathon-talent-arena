@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 import json
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 import os
 import string
 
@@ -26,38 +26,74 @@ def load_data(file_path, **args):
         return None
 
 
-def prepare_dataset(df):
+def map_verdict(verdict_series):
+    """
+    Normaliza y mapea la variable verdict a un formato binario estándar ('1' para passed/seguro, '0' para failed/hackeado).
+    
+    Args:
+        verdict_series (pd.Series): Serie de pandas con los veredictos en bruto.
+        
+    Returns:
+        pd.Series: Serie con valores '1', '0' o cadena vacía si no hay coincidencia.
+    """
+    mapping = {
+        "passed": "1", "1": "1", "seguro": "1",
+        "failed": "0", "0": "0", "hackeado": "0"
+    }
+    return (
+        verdict_series
+        .astype(str)
+        .str.lower()
+        .str.strip()
+        .map(mapping)
+        .fillna("")
+    )
+
+
+def prepare_dataset(df, test_file=False):
     """
     Prepara y estructura el dataset crudo para las pruebas del hackathon.
     
     Esta función se encarga de:
     1. Extraer el último turno válido de la conversación entre el usuario y el asistente.
-    2. Rellenar las respuestas propuestas ('proposed_answer') en caso de que estén vacías con
-       la respuesta final, lo cual es útil si el 'verdict' ha sido favorable (passed).
-    3. Mapear el 'verdict' ('passed'/'failed') a un formato categórico/binario (1 o 0).
+    2. Rellenar las respuestas propuestas ('proposed_answer') si están vacías con la respuesta final.
+    3. Mapear el 'verdict' ('passed'/'failed') a un formato binario (1 o 0), omitiéndolo en tests.
     
     Args:
-        df (pd.DataFrame): DataFrame que contiene los datos crudos originales.
+        df (pd.DataFrame): DataFrame con los datos crudos.
+        test_file (bool): Si es True, no se procesa ni se incluye la columna 'verdict'.
         
     Returns:
-        pd.DataFrame: Un DataFrame estructurado, listo para el EDA, evaluación o Fine-Tuning de Prometheus.
+        pd.DataFrame: DataFrame estructurado listo para análisis o entrenamiento.
     """
+    # 1. Extraer el último intercambio válido (question, answer, history, conversation)
+    # .apply(pd.Series) convierte el diccionario retornado en columnas
+    qa_turns = df["raw"].apply(lambda x: get_last_valid_turn(x.get("messages", []))).apply(pd.Series)
     
-        
-    qa_last_messages = df["raw"].apply(lambda x: get_last_valid_turn(x["messages"])).apply(pd.Series)
-    
-    df["category_name"] = df.category.map(lambda x: x.get("name"))
+    # 2. Extraer nombre de la categoría de forma segura
+    df["category_name"] = df["category"].apply(lambda x: x.get("name") if isinstance(x, dict) else None)
 
-    df = pd.concat([df[["verdict","challenge","category_name","proposed_answer"]], qa_last_messages],axis=1)
-    # cuando el verdict es passed, la gente no introduce una proposed_answer, pero es adecuado tener la misma que la que ha hecho el modelo
-    # bien para el llm como juez
+    # 3. Definir las columnas base que queremos mantener
+    # 'challenge', 'category_name' y 'proposed_answer' son fundamentales
+    cols_to_keep = ["message-id", "challenge", "category_name", "proposed_answer"]
     
-    df['proposed_answer'] = df['proposed_answer'].fillna(df['answer'])
+    # Si no es un fichero de test y existe la columna verdict, la incluimos
+    if not test_file and "verdict" in df.columns:
+        cols_to_keep.insert(0, "verdict")
     
-    # mapeamos a 0 o 1
-    df['verdict'] = df['verdict'].str.lower().str.strip().map({'passed': 1, 'failed': 0}).fillna("").astype(str)
+    # 4. Filtrar por las columnas que realmente existan y concatenar con los turnos de QA
+    present_cols = [c for c in cols_to_keep if c in df.columns]
+    processed_df = pd.concat([df[present_cols], qa_turns], axis=1)
     
-    return df
+    # 5. Rellenar 'proposed_answer' con 'answer' si la primera está vacía
+    if "proposed_answer" in processed_df.columns and "answer" in processed_df.columns:
+        processed_df["proposed_answer"] = processed_df["proposed_answer"].fillna(processed_df["answer"])
+    
+    # 6. Mapear veredicto a '1' (passed) o '0' (failed) si corresponde
+    if not test_file and "verdict" in processed_df.columns:
+        processed_df["verdict"] = map_verdict(processed_df["verdict"])
+    
+    return processed_df
 
 def save_data(data, file_path):
     """
@@ -71,18 +107,10 @@ def save_data(data, file_path):
         file_path (str o Path): La ruta de destino del archivo JSON a crear.
     """
     try:
-        if isinstance(data, pd.DataFrame):
-            data = data.to_dict(orient='records',
-                                 indent=2,
+        data = data if isinstance(data, pd.DataFrame) else data.to_pandas()
+        data.to_json(file_path, orient='records',
+                                 indent=4,
                                  force_ascii=False)
-        
-        elif isinstance(data, Dataset):
-            data = data.to_pandas().to_dict(orient='records',
-                                 indent=2,
-                                 force_ascii=False)
-
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=4)
         print(f"Data saved to {file_path}")
     except Exception as e:
         print(f"Error saving data: {e}")
@@ -225,7 +253,7 @@ def prepare_sft_binary_text(sample, tokenizer_eos_token='</s>', output_col_name=
     if label is None:
         return {output_col_name: ""} 
     
-    # 4. El formato PERFECTO para Prometheus
+    # 4. El formato para Prometheus
     full_text = f"{prompt}{reasoning} [RESULT] {label}{tokenizer_eos_token}"
     
     return {output_col_name: full_text}

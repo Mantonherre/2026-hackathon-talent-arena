@@ -11,6 +11,7 @@ __pycache__/
 output/
 !output/dataset_preds_sample.json
 !output/output_robutness_sample.json
+!output/example_submission.json
 # Regla para la carpeta data:
 # 1. Ignoramos todo el contenido de la carpeta
 data/*
