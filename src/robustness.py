@@ -1,8 +1,9 @@
 from datasets import Dataset
 import pandas as pd
 from model_utils import model_predict_batched, split_model_reason_result
+from promptnoises import CustomConfig, process_prompts
 
-def create_robustness_dataset(df_input: pd.DataFrame = None, pred_col="user_content") -> Dataset:
+def create_robustness_dataset(df_input: pd.DataFrame = None, input_col="user_content") -> Dataset:
     """
     Crea un dataset con distintas variaciones de ruido o corrupción 
     (typos, errores gramaticales, etc.) aplicadas a los prompts originales
@@ -48,8 +49,9 @@ def create_robustness_dataset(df_input: pd.DataFrame = None, pred_col="user_cont
         "lowercase": True
     }
 
+    df_input = df_input.to_pandas() if isinstance(df_input, Dataset) else df_input
 
-    prompts = df_input[pred_col].tolist()
+    prompts = df_input[input_col].to_list()
 
     # Usamos process_prompts en lugar de process_csv ya que así evitamos problemas
     # de compatibilidad si el dataset de entrada es un JSON o ya viene cargado en pandas.
@@ -58,7 +60,6 @@ def create_robustness_dataset(df_input: pd.DataFrame = None, pred_col="user_cont
     
     df = pd.DataFrame(results)
     dataset = Dataset.from_pandas(df)
-
     return dataset
 
 def model_preds(model, tokenizer, dataset: Dataset, input_col: str, output_suffix: str) -> Dataset:
@@ -77,7 +78,7 @@ def model_preds(model, tokenizer, dataset: Dataset, input_col: str, output_suffi
             Dataset: Dataset con las nuevas columnas calculadas.
         """
         
-        
+
         completion_colname = f"{output_suffix}_completion"
 
         dataset = dataset.map(
@@ -92,7 +93,7 @@ def model_preds(model, tokenizer, dataset: Dataset, input_col: str, output_suffi
         )
         return dataset
 
-def model_preds_robustness(model, tokenizer, dataset: Dataset) -> Dataset:
+def model_preds_robustness(model, tokenizer, dataset: Dataset, input_col: str = "user_content", id_col: str = None) -> Dataset:
         """
         Aplica predicción de modelo sobre todas las columnas con variaciones 
         (original, typos, grammatical errors) dentro del dataset.
@@ -101,17 +102,25 @@ def model_preds_robustness(model, tokenizer, dataset: Dataset) -> Dataset:
             model: Modelo de inferencia.
             tokenizer: Tokenizador.
             dataset (Dataset): Dataset generado previamente que contiene las variaciones.
+            input_col (str): Nombre de la columna de entrada.
 
         Returns:
             Dataset: Dataset con los resultados e inferencias generadas.
         """
+        robustness_dataset = create_robustness_dataset(df_input = dataset, input_col = input_col)
+        
+        if id_col:
+            id_values = dataset[id_col] if isinstance(dataset, Dataset) else dataset[id_col].tolist()
+            robustness_dataset = robustness_dataset.add_column(id_col, id_values)
+        else:
+            robustness_dataset = robustness_dataset.add_column("id", list(range(len(robustness_dataset))))
+
         cols = ["prompt_original", "prompt_typos", "prompt_grammatical_errors"]
         
-        # Corrección: Extraemos la primera letra de las dos primeras palabras para formar el sufijo (po, pt, pg)
         create_suffix = lambda x: "".join([p[0] for p in x.split("_")[:2]]) + "_m"
         col_and_suffix = [(col, create_suffix(col)) for col in cols]
 
         for col, output_suffix in col_and_suffix:
-            dataset = model_preds(model, tokenizer, dataset, col, output_suffix)
+            robustness_dataset = model_preds(model, tokenizer, robustness_dataset, col, output_suffix)
         
-        return dataset
+        return robustness_dataset
