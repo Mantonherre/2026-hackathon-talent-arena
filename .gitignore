@@ -8,7 +8,7 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Salidas de modelos/datos
-output/
+output/*
 !output/dataset_preds_sample.json
 !output/output_robutness_sample.json
 !output/example_submission.json
@@ -18,6 +18,11 @@ data/*
 # 2. Creamos la excepción para los archivos que quieres mantener
 !data/dataset_sample.json
 !data/validation_dataset_sample.json
+!data/submissions/
+data/submissions/*
+!data/submissions/teams/
+data/submissions/teams/*
+!data/submissions/teams/example_submission.json
 
 # Ocultamos la evaluación y generación de datos del participante
 scripts/
