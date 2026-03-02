@@ -169,14 +169,16 @@ def get_last_valid_turn(messages):
 
 
 
-def extract_prompt_variables(sample, user_prompt):
+def extract_prompt_variables(sample, user_prompt, column_mapping=None):
     """
     Identifica las variables requeridas en una plantilla de prompt y las extrae del sample.
-    Si alguna variable requerida no está en el sample, lanza un KeyError.
+    Permite el uso de un diccionario de mapeo para relacionar nombres del sample con el prompt.
 
     Args:
         sample (dict o pd.Series): Un ejemplo del dataset que contiene las variables.
         user_prompt (str): La plantilla de prompt que usa llaves {var}.
+        column_mapping (dict, opcional): Diccionario que mapea las claves del sample a las 
+                                         claves del prompt. Ej: {"nombre_sample": "nombre_prompt"}.
 
     Returns:
         dict: Diccionario cerrado con únicamente las variables requeridas por el prompt.
@@ -184,33 +186,47 @@ def extract_prompt_variables(sample, user_prompt):
     # Identificar las variables que pide la plantilla de forma dinámica
     vars_in_prompt = [fname for _, fname, _, _ in string.Formatter().parse(user_prompt) if fname is not None]
     
+    # Invertir el mapeo internamente: {nombre_en_prompt: nombre_en_sample}
+    # Esto facilita buscar qué columna del sample corresponde a la variable pedida.
+    prompt_to_sample = {}
+    if column_mapping:
+        prompt_to_sample = {v: k for k, v in column_mapping.items()}
+    
     base_vars = {}
     
-    # Extraer las variables del sample, validando que existan
+    # Extraer las variables del sample, validando que existan (ya sea directo o por mapeo)
     for var in vars_in_prompt:
-        if var not in sample:
-            raise KeyError(f"La variable '{var}' requerida en el prompt no está presente en el sample.")
-        base_vars[var] = sample[var]
+        # Si la variable está mapeada, usamos la clave original del sample; si no, buscamos la variable tal cual
+        sample_key = prompt_to_sample.get(var, var)
+        
+        if sample_key not in sample:
+            raise KeyError(
+                f"Error: El prompt requiere '{var}' pero la clave '{sample_key}' no está en el sample."
+            )
+            
+        base_vars[var] = sample[sample_key]
         
     return base_vars
 
-def format_instruction(sample, system_prompt, user_prompt, output_col="user_content"):
+def format_instruction(sample, system_prompt, user_prompt, output_col="user_content", column_mapping=None):
     """
     Construye el prompt estructurado para el modelo Prometheus (LLM-as-a-Judge).
     
-    Extrae las variables del prompt dinámicamente desde el sample. Si alguna variable
-    requerida en la plantilla del prompt no está en el sample, lanzará un KeyError.
+    Extrae las variables del prompt dinámicamente desde el sample, permitiendo un 
+    mapeo de nombres entre ambos.
 
     Args:
         sample (dict o pd.Series): Un ejemplo del dataset que contiene las variables.
         system_prompt (str): El prompt del sistema general.
         user_prompt (str): La plantilla de prompt que usa llaves {var}.
         output_col (str): Clave de salida.
+        column_mapping (dict, opcional): Diccionario de mapeo {"sample_key": "prompt_key"}.
 
     Returns:
-        dict: Diccionario con la clave 'user_content' lista para ser procesada por el tokenizer.
+        dict: Diccionario con la clave lista para ser procesada por el tokenizer.
     """
-    base_vars = extract_prompt_variables(sample, user_prompt)
+    # Pasamos el mapeo a la función de extracción
+    base_vars = extract_prompt_variables(sample, user_prompt, column_mapping)
             
     # Inyección en la plantilla de evaluación absoluta
     user_content = system_prompt + "\n\n" + user_prompt.format(**base_vars)

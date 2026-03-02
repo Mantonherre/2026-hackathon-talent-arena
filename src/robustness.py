@@ -2,19 +2,21 @@ from datasets import Dataset
 import pandas as pd
 from model_utils import model_predict_batched, split_model_reason_result
 from promptnoises import CustomConfig, process_prompts
+from data_utils import format_instruction
+from prompts import ABS_SYSTEM_PROMPT, ABSOLUTE_PROMPT
 
-def create_robustness_dataset(df_input: pd.DataFrame = None, input_col="user_content") -> Dataset:
+def create_robustness_dataset(df_input: pd.DataFrame = None, input_col="user_content") -> pd.DataFrame:
     """
     Crea un dataset con distintas variaciones de ruido o corrupción 
     (typos, errores gramaticales, etc.) aplicadas a los prompts originales
     para evaluar la robustez del modelo.
     
     Args:
-        df_input (pd.DataFrame): DataFrame de entrada con los prompts originales.
-        pred_col (str): Nombre de la columna que contiene los prompts. Por defecto "user_content".
+        df_input (pd.DataFrame): DataFrame o Dataset de entrada con los prompts originales.
+        input_col (str): Nombre de la columna que contiene los prompts. Por defecto "user_content".
 
     Returns:
-        Dataset: Dataset de HuggingFace con las variaciones generadas.
+        pd.DataFrame: DataFrame de pandas con las variaciones generadas.
     """
     # 1. Definimos la configuración base como un diccionario
     config_notebook = {
@@ -59,8 +61,7 @@ def create_robustness_dataset(df_input: pd.DataFrame = None, input_col="user_con
     results = process_prompts(prompts, custom_cfg=custom_cfg)
     
     df = pd.DataFrame(results)
-    dataset = Dataset.from_pandas(df)
-    return dataset
+    return df
 
 def model_preds(model, tokenizer, dataset: Dataset, input_col: str, output_suffix: str) -> Dataset:
         """
@@ -93,7 +94,26 @@ def model_preds(model, tokenizer, dataset: Dataset, input_col: str, output_suffi
         )
         return dataset
 
-def model_preds_robustness(model, tokenizer, dataset: Dataset, input_col: str = "user_content", id_col: str = None) -> Dataset:
+def format_to_instruction_in_robustness_dataset(robustness_dataset: Dataset, input_col: str = "prompt_original") -> Dataset:
+    """
+    Formatea todas las instrucciones en el dataset de robustez.
+
+    Args:
+        robustness_dataset (Dataset): Dataset con las variaciones.
+        input_col (str): Nombre de la columna de entrada. Por defecto "prompt_original".
+
+    Returns:
+        Dataset: Dataset con las instrucciones formateadas.
+    """
+    
+
+    column_mapping = { input_col:"question"}
+
+    robustness_dataset = robustness_dataset.map(format_instruction, fn_kwargs={"system_prompt": ABS_SYSTEM_PROMPT, "user_prompt":ABSOLUTE_PROMPT, "output_col" : input_col, "column_mapping": column_mapping})
+
+    return robustness_dataset
+
+def model_preds_robustness(model, tokenizer, dataset: Dataset, prompt_col: str = "question") -> Dataset:
         """
         Aplica predicción de modelo sobre todas las columnas con variaciones 
         (original, typos, grammatical errors) dentro del dataset.
@@ -101,26 +121,34 @@ def model_preds_robustness(model, tokenizer, dataset: Dataset, input_col: str = 
         Args:
             model: Modelo de inferencia.
             tokenizer: Tokenizador.
-            dataset (Dataset): Dataset generado previamente que contiene las variaciones.
-            input_col (str): Nombre de la columna de entrada.
+            dataset (Dataset): Dataset inicial de donde se generarán las variaciones de robustez.
+            prompt_col (str): Nombre de la columna que contiene el prompt. Por defecto "question".
 
         Returns:
-            Dataset: Dataset con los resultados e inferencias generadas.
+            Dataset: Dataset con los resultados e inferencias generadas para cada variación.
         """
-        robustness_dataset = create_robustness_dataset(df_input = dataset, input_col = input_col)
-        
-        if id_col:
-            id_values = dataset[id_col] if isinstance(dataset, Dataset) else dataset[id_col].tolist()
-            robustness_dataset = robustness_dataset.add_column(id_col, id_values)
-        else:
-            robustness_dataset = robustness_dataset.add_column("id", list(range(len(robustness_dataset))))
 
-        cols = ["prompt_original", "prompt_typos", "prompt_grammatical_errors"]
+        # convertimos dataset a pandas
+        dataset = dataset.to_pandas() if isinstance(dataset, Dataset) else dataset
+
+        # creamos dataset de robustez y mergeamos con el dataset original
+        robustness_dataset = create_robustness_dataset(df_input = dataset, input_col = prompt_col)
         
+        robustness_dataset = robustness_dataset.merge(dataset, left_on="prompt_original", right_on=prompt_col, how="inner")
+        robustness_dataset = Dataset.from_pandas(robustness_dataset)
+        
+        # formateamos todas las instrucciones
+        cols = ["prompt_original", "prompt_typos", "prompt_grammatical_errors"]
+        # creamos sufijos para las columnas de salida
         create_suffix = lambda x: "".join([p[0] for p in x.split("_")[:2]]) + "_m"
         col_and_suffix = [(col, create_suffix(col)) for col in cols]
 
+        # aplicamos modelo a cada columna
         for col, output_suffix in col_and_suffix:
+            robustness_dataset = format_to_instruction_in_robustness_dataset(robustness_dataset = robustness_dataset, input_col = col)
+
             robustness_dataset = model_preds(model, tokenizer, robustness_dataset, col, output_suffix)
+
+
         
         return robustness_dataset
