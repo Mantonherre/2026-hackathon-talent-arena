@@ -17,6 +17,7 @@ output/*
 data/*
 # 2. Creamos la excepción para los archivos que quieres mantener
 !data/dataset_sample.json
+!data/dataset_train_ds.json
 !data/validation_dataset_sample.json
 !data/submissions/
 data/submissions/*
