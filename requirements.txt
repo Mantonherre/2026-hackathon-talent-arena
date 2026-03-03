@@ -1,0 +1,27 @@
+# ── Core ML / HuggingFace ────────────────────────────────────────────────────
+torch>=2.2.0
+transformers>=4.40.0
+datasets>=2.18.0
+accelerate>=0.28.0
+peft>=0.10.0
+trl>=0.8.6
+
+# ── Quantization (QLoRA / 4-bit) ─────────────────────────────────────────────
+bitsandbytes>=0.43.0
+
+# ── Data & Metrics ────────────────────────────────────────────────────────────
+pandas>=2.0.0
+numpy>=1.24.0
+scikit-learn>=1.4.0
+
+# ── Visualización (EDA notebook) ──────────────────────────────────────────────
+matplotlib>=3.8.0
+seaborn>=0.13.0
+
+# ── Configuración y entorno ───────────────────────────────────────────────────
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# ── Notebooks ─────────────────────────────────────────────────────────────────
+jupyter>=1.0.0
+ipykernel>=6.0.0
