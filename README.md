@@ -97,7 +97,9 @@ Todos los criterios tienen el mismo peso (20%).
 Total = 100%
 
 ### Proceso de Entrega
-Al finalizar el tiempo, se proporcionará un **Dataset de Test**. Deberás procesarlo con tu modelo y entregar un archivo `submission.json` con el formato especificado en los notebooks.
+Para la perte cuantitativa, poco antes de finalizar el tiempo de la Hakathon, se proporcionará un **Dataset de Test**. Deberás procesarlo con tu modelo y entregar un archivo `submission.json` con el formato especificado en los notebooks.
+
+Para la parte cualitativa, cada equipo debe entregar un **resumen de una página** explicando su contribución en relación a los tres puntos cualitativos.
 
 ### Rúbricas Cualitativas
 
