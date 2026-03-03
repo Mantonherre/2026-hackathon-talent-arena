@@ -114,7 +114,7 @@ def filter_high_quality(df):
     before = len(df)
     df_clean = df[df["val_context_bool"] == True].copy()
     after = len(df_clean)
-    print(f"Filtrado de calidad: {before} → {after} muestras ({before - after} eliminadas por contexto inválido)")
+    print(f"Filtrado de calidad: {before} -> {after} muestras ({before - after} eliminadas por contexto invalido)")
     return df_clean.reset_index(drop=True)
 
 
