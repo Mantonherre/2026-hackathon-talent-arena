@@ -187,24 +187,35 @@ def model_predict_batched(model, tokenizer, batch, input_col = "user_content",
 def load_lora_model(model_name, model_path):
     """
     Carga un modelo base y le aplica los pesos ajustados de un entrenamiento LoRA (PEFT).
-    
+
     Durante el hackathon, usarás esta función para cargar tu propio modelo afinao (Fine-Tuned)
     y comparar sus evaluaciones con las del modelo original.
-    
+
     Args:
         model_name (str): Nombre o ruta del modelo base original (p. ej., "prometheus-eval/prometheus-7b-v2.0").
         model_path (str): Ruta donde se encuentran guardados los adaptadores LoRA entrenados.
-        
+
     Returns:
         model, tokenizer: Tupla con el modelo ajustado y su tokenizador.
     """
+    from transformers import BitsAndBytesConfig
 
-    # 1. Load the original BASE model (the one you started with)
-    base_model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
-    
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16
+    )
+
+    # 1. Load the original BASE model with 4-bit quantization to save VRAM
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        device_map="auto",
+        quantization_config=bnb_config,
+        torch_dtype=torch.float16
+    )
+
     # 2. Load the Tokenizer (now that you've saved it to the FT path)
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    
+
     # 3. Load the LoRA adapters onto the base model
     model = PeftModel.from_pretrained(base_model, model_path)
     return model, tokenizer
