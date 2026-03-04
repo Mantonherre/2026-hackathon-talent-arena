@@ -211,9 +211,15 @@ def format_instruction(sample, system_prompt, user_prompt, output_col="user_cont
 
     # Inject category_rubric if the template needs it
     if "{category_rubric}" in user_prompt:
-        category_name = sample.get("category_name", "")
+        category_name = sample.get("category_name") or ""
         sample = dict(sample)  # avoid mutating originals
+        sample["category_name"] = category_name  # ensure present even if was None/missing
         sample["category_rubric"] = get_category_rubric(category_name)
+
+    # Ensure history_str is present (required by ABSOLUTE_PROMPT)
+    if "{history_str}" in user_prompt and "history_str" not in sample:
+        sample = dict(sample) if not isinstance(sample, dict) else sample
+        sample["history_str"] = ""
 
     base_vars = extract_prompt_variables(sample, user_prompt, column_mapping)
     user_content = system_prompt + "\n\n" + user_prompt.format(**base_vars)
