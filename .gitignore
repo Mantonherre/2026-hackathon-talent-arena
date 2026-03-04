@@ -19,6 +19,7 @@ data/*
 !data/dataset_sample.json
 !data/dataset_train_ds.json
 !data/validation_dataset_sample.json
+!data/TEST_DATASET.json
 !data/submissions/
 data/submissions/*
 !data/submissions/teams/
