@@ -83,9 +83,9 @@ def model_preds(model, tokenizer, dataset: Dataset, input_col: str, output_suffi
         completion_colname = f"{output_suffix}_completion"
 
         dataset = dataset.map(
-            lambda batch: model_predict_batched(batch = batch, model = model, tokenizer = tokenizer,  input_col = input_col, completion_colname = completion_colname), 
-            batched=True, 
-            batch_size=8
+            lambda batch: model_predict_batched(batch = batch, model = model, tokenizer = tokenizer,  input_col = input_col, completion_colname = completion_colname),
+            batched=True,
+            batch_size=1
         )
         
         dataset = dataset.map(
